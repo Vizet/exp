@@ -27,8 +27,8 @@ module.exports = class Bot{
             .then(response => {
                 console.log('данные загружены в бота')
                 this.candles = response.data
-                // var close = this.candles.map(el => el[4])
-                // console.log('RSI', RSI(close, 14))
+                var close = this.candles.map(el => el[4])
+                console.log('RSI', RSI(close, 14))
 
             })
             .catch(e => console.log('Ошибка при загрузке стартовых данных', e))
