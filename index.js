@@ -1,6 +1,5 @@
 var express = require('express')
 var axios = require('axios')
-var _ = require('lodash')
 
 const WebSocket = require('ws')
 var io = require('socket.io').listen(80)
