@@ -7,7 +7,6 @@ module.exports = function (series, period) {
 
 
     function RMA(series, period){
-
         var RMAresult = []
 
         series.forEach((el, i) => {
@@ -26,7 +25,6 @@ module.exports = function (series, period) {
 
 
     function RSI(series, period){
-
         var change = series.map( (el, i) => (i == 0) ? 0 : el - series[i - 1] )
 
         var gain = change.map(el => (el > 0) ? el : 0)

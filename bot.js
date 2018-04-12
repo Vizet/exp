@@ -1,8 +1,10 @@
 // binance bot
 
 var axios = require('axios')
+var moment = require('moment')
 
 var RSI = require('./indicators/RSI.js')
+var db = require('./DB')
 
 module.exports = class Bot{
 
@@ -12,28 +14,35 @@ module.exports = class Bot{
     */
 
 	constructor({symbol, timeframe, buy, sell, startCandles}){
-
-	    this.symbol = symbol
-        this.timeframe = timeframe
-        this.buy = buy
-        this.sell = sell
-        this.positionOpen = false
-        this.candles = []
-
-        this.streamName = symbol.toLowerCase()+'@kline_'+timeframe // ltcusdt@kline_1h
+        db.connect(() => {
+            this.symbol = symbol
+            this.timeframe = timeframe
+            this.buy = buy
+            this.sell = sell
+            this.positionOpen = false
+            this.candles = []
 
 
-        axios.get('https://api.binance.com/api/v1/klines?symbol='+this.symbol.toUpperCase()+'&interval='+timeframe+'&limit='+startCandles)
-            .then(response => {
-                console.log('данные загружены в бота')
-                this.candles = response.data
-                var close = this.candles.map(el => el[4])
-                var rsiRes = RSI(close, 14)
-                console.log('RSI', rsiRes.splice(rsiRes.length - 10, rsiRes))
+            this.streamName = symbol.toLowerCase()+'@kline_'+timeframe // ltcusdt@kline_1h
 
-            })
-            .catch(e => console.log('Ошибка при загрузке стартовых данных', e))
+            this.botHistory = {
+                botName: this.streamName,
+                startTime: moment().format('HH:mm:ss DD.MM.YYYY'),
+                tradeHistory: []
+            }
 
+
+            axios.get('https://api.binance.com/api/v1/klines?symbol='+this.symbol.toUpperCase()+'&interval='+timeframe+'&limit='+startCandles)
+                .then(response => {
+                    console.log('данные загружены в бота', this.streamName)
+                    this.candles = response.data
+                    var close = this.candles.map(el => el[4])
+                    var rsiRes = RSI(close, 14)
+                    console.log(this.streamName, 'RSI', rsiRes.slice(-5))
+
+                })
+                .catch(e => console.log('Ошибка при загрузке стартовых данных', e))
+        })
 	}
 
 	get endLastCandleTime(){
@@ -41,13 +50,6 @@ module.exports = class Bot{
     }
 
 
-    buyAsset(){
-
-    }
-
-    sellAsset(){
-
-    }
 
     processNewCandle(newCandle){
 
@@ -91,8 +93,9 @@ module.exports = class Bot{
         ]
     }
 
+    // fake Deal
     makeDeal(action = 'none'){
-        axios.get('https://api.binance.com/api/v1/depth?symbol=LTCUSDT&limit=5')
+        axios.get('https://api.binance.com/api/v1/depth?symbol='+this.symbol.toUpperCase()+'&limit=5')
             .then(response => {
 
                 var price = {
@@ -101,14 +104,31 @@ module.exports = class Bot{
                 }
 
                 if(action === 'buy'){
-                    console.log(this.symbol, 'покупка по цене', price.ask)
+                    this.botHistory.tradeHistory.push({
+                        timeBuy: moment().format('HH:mm:ss DD.MM.YYYY'),
+                        butPrice: price.ask
+                    })
+                    console.log(this.streamName, 'покупка по цене', price.ask)
                 }
 
                 if(action === 'sell'){
-                    console.log(this.symbol, 'продажа по цене', price.bid)
+                    this.botHistory.tradeHistory[this.botHistory.tradeHistory.length - 1].timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
+                    this.botHistory.tradeHistory[this.botHistory.tradeHistory.length - 1].sellPrice = price.bid
+
+                    db.get().collection("bots").insert(this.botHistory , (err, res) => {
+                        if(err){
+                            console.log(this.streamName, 'ошибка при записи в базу')
+                        }
+                        else{
+                            console.log(this.streamName, 'сделка записана в базу')
+                        }
+
+                    })
+
+                    console.log(this.streamName, 'продажа по цене', price.bid)
                 }
 
-                console.log('BEST', price)
+                // console.log('BEST', price)
             })
             .catch(e => console.log('makeDeal что то не так', e))
 

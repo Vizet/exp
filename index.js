@@ -1,114 +1,25 @@
 var express = require('express')
 var axios = require('axios')
-
 const WebSocket = require('ws')
 var io = require('socket.io').listen(80)
-
 var mongoClient = require('mongodb').MongoClient
-var Bot = require('./bot.js')
+
+const Bot = require('./bot.js')
+const RSI = require('./indicators/RSI.js')
+const db = require('./DB')
 
 var app = express()
-
-var botState = {
-    positionStatus: 'none',
-    priceInfo: {
-
-    }
-}
-
-var DB
-
-var candleArr = []
-
-
-
 
 
 
 // юзаю сокеты для конекта к стриму свечей
 
 
-
-function objCandleToArray(objCandle) {
-    return [
-        objCandle.t,
-        objCandle.o,
-        objCandle.h,
-        objCandle.l,
-        objCandle.c,
-        objCandle.v,
-        objCandle.T,
-        objCandle.q,
-        objCandle.n,
-        objCandle.V,
-        objCandle.Q,
-
-    ]
-}
-
-
-function makeDeal(action = 'none'){
-    axios.get('https://api.binance.com/api/v1/depth?symbol=LTCUSDT&limit=5')
-        .then(response => {
-
-            var price = {
-                bid: response.data.bids[0][0], // цена покупки(на бирже)
-                ask: response.data.asks[0][0]  // цена продажи(на бирже)
-            }
-
-            if(action === 'buy'){
-                console.log('фактическая цена открытия', price.ask)
-                botState.priceInfo.openPriceFact = price.ask
-                DB.db('admin').collection("bots").insert(botState.priceInfo, function(err, res){
-                    console.log('записали сделку в базу')
-                })
-            }
-
-            if(action === 'sell'){
-                console.log('фактическая цена закрытия', price.bid)
-                botState.priceInfo.clsoePriceFact = price.bid
-
-                // тут запись в базу
-
-                DB.db('admin').collection("bots").insert(botState.priceInfo, function(err, res){
-                    console.log('записали сделку в базу')
-                })
-            }
-
-            // console.log('BEST', price)
-            console.log('--------------------------------------------------')
-        })
-        .catch(e => console.log('makeDeal что то не так', e))
-
-}
-
-
-
-function startBot(){
-    axios.get('https://api.binance.com/api/v1/time')
-        .then(response => {
-            console.log('time', Date.now() - response.data.serverTime)
-        })
-        .catch(e => console.log(e))
-
-    axios.get('https://api.binance.com/api/v1/klines?symbol=LTCUSDT&interval=1h&limit=3')
-        .then(response => {
-            candleArr = response.data
-            // console.log('candleArr', candleArr)
-            // setInterval(checkCandleEndTime.bind(this), 1000)
-        })
-        .catch(e => console.log(e))
-}
-
-
 var botsCollection = {};
 
 function startBots(botsArray){
-    botsArray.forEach(currentBotOptions => {
-
-        let streamName = currentBotOptions.symbol.toLowerCase()+'@kline_'+currentBotOptions.timeframe // ltcusdt@kline_1h
-
-        botsCollection[streamName] = new Bot(currentBotOptions)
+    botsArray.forEach(currentBot=> {
+        botsCollection[currentBot.streamName] = currentBot
     })
 
 
@@ -132,111 +43,39 @@ function startBots(botsArray){
 
 }
 
-startBots([
-    {
-        symbol: 'ltcusdt',
-        timeframe: '1h',
-        buy: function (candles) {
-            let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-            let twoRedCandles = colorCandlesArr.every(el => el === 'red')
-            return twoRedCandles
-        },
-        sell: function (candles) {
-            let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-            let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
-            return oneGreenCandle
-        },
-        startCandles: 3
+let bnbBot = new Bot({
+    symbol: 'bnbusdt',
+    timeframe: '1m',
+    buy: function (candles) {
+        // colorBar
+        let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
+        let twoRedCandles = colorCandlesArr.every(el => el === 'red')
+
+        // RSI
+        let currentRSI = RSI(candles, 4).slice(-1)
+        let lastCandle = candles[candles.length]
+        let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
+
+        let RSIbuy = (currentRSI < 24) && (lastCandle > avgCandleSize / 5) && (lastCandle[1] > lastCandle[4])
+        return true //twoRedCandles || RSIbuy
     },
-    {
-        symbol: 'neousdt',
-        timeframe: '1h',
-        buy: function (candles) {
-            let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-            let twoRedCandles = colorCandlesArr.every(el => el === 'red')
-            return twoRedCandles
-        },
-        sell: function (candles) {
-            let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-            let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
-            return oneGreenCandle
-        },
-        startCandles: 3
-    }
-])
+    sell: function (candles) {
+        // colorBar
+        let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
+        let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
 
+        // RSI
+        let currentRSI = RSI(candles, 4).slice(-1)
+        let lastCandle = candles[candles.length]
+        let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
 
+        // FIX THIS
+        let RSIsell = (currentRSI > 24) && (lastCandle > avgCandleSize / 2) && (lastCandle[4] > lastCandle[1])
 
-// const ws = new WebSocket('wss://stream.binance.com:9443/ws/ltcusdt@kline_1h');
-
-
-// ws.on('message', function(data) {
-//
-//     let currentCandle = JSON.parse(data)
-//
-//     if(currentCandle.k.t === candleArr[candleArr.length - 1][0]){
-//         console.log('текущая свеча уже в массиве, удаляем')
-//         candleArr.pop()
-//     }
-//
-//     if(currentCandle.k.x){
-//         candleArr.push( objCandleToArray(currentCandle.k) )
-//
-//         // логику принятия решений пишу пока здесь
-//
-//         let colorCandlesArr = candleArr.slice(candleArr.length - 2, candleArr.length).map(el => el[4] > el[1] ? 'green' : 'red')
-//
-//         console.log('свеча закрылась, colorCandlesArr', colorCandlesArr)
-//
-//
-//         if(botState.positionStatus === 'none'){
-//             // позиция не открыта, ищем вход
-//             const twoRedCandles = colorCandlesArr.every(el => el === 'red')
-//
-//
-//             if(twoRedCandles){
-//                 // покупаем
-//                 makeDeal('buy')
-//                 console.log('цена открытия позиции', colorCandlesArr, currentCandle.k.o)
-//                 botState.positionStatus = 'opened'
-//                 botState.priceInfo.openPrice = currentCandle.k.o
-//
-//             }else{
-//                 // console.log('нет условий для покупки', colorCandlesArr)
-//             }
-//         }else if(botState.positionStatus === 'opened'){
-//             // уже купили, пытаемся продать
-//             const oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
-//
-//             if(oneGreenCandle){
-//                 // закрываем позицию(продаем)
-//                 makeDeal('sell')
-//                 console.log('цена закрытия позиции', colorCandlesArr, currentCandle.k.c)
-//                 botState.priceInfo.closePrice = currentCandle.k.c
-//
-//                 botState.positionStatus = 'none'
-//
-//             }else{
-//                 // console.log('еще не продаем', colorCandlesArr)
-//             }
-//         }
-//
-//
-//
-//     }else{
-//         // console.log('открыта', objData.k.x)
-//     }
-//
-//     // эта часть должна быть внтри бота
-//
-//
-// });
-
-
-
-
-
-
+        return true //RSIsell
+    },
+    startCandles: 500
+})
 
 
 
@@ -251,42 +90,45 @@ app.get('/', function (req, res) {
     console.log('user request')
 })
 
-
-mongoClient.connect("mongodb://localhost:27017/admin", function(err, database){
-    if(err){
-        return console.log('ошибка при коннекте к монге', err)
-    }
-
-    console.log('конект к db прошел')
-
-    DB = database
-
-    // добавленеи документа в коллекцию
-
-
+db.connect(function () {
     app.listen('3000', function () {
+        startBots([
+            new Bot({
+                symbol: 'bnbusdt',
+                timeframe: '1m',
+                buy: function (candles) {
+                    // colorBar
+                    let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
+                    let twoRedCandles = colorCandlesArr.every(el => el === 'red')
 
-        // startBot()
+                    // RSI
+                    let currentRSI = RSI(candles, 4).slice(-1)
+                    let lastCandle = candles[candles.length]
+                    let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
 
-        var dno = {
-            a: 1,
-            b: 2
-        }
+                    let RSIbuy = (currentRSI < 24) && (lastCandle > avgCandleSize / 5) && (lastCandle[1] > lastCandle[4])
+                    return true //twoRedCandles || RSIbuy
+                },
+                sell: function (candles) {
+                    // colorBar
+                    let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
+                    let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
 
-        // DB.db('admin').collection("bots").insert(_.cloneDeep(dno) , function(err, res){
-        //     console.log('записали сделку в базу')
-        // })
-        //
-        // DB.db('admin').collection("bots").insert(_.cloneDeep(dno), function(err, res){
-        //     console.log('записали сделку в базу')
-        // })
+                    // RSI
+                    let currentRSI = RSI(candles, 4).slice(-1)
+                    let lastCandle = candles[candles.length]
+                    let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
 
+                    // FIX THIS
+                    let RSIsell = (currentRSI > 24) && (lastCandle > avgCandleSize / 2) && (lastCandle[4] > lastCandle[1])
 
+                    return true //RSIsell
+                },
+                startCandles: 500
+            })
+        ])
     })
-
-    // botHistory.insertOne(bot, function(err, res){
-    //     console.log('вроде как что то произошло')
-    // })
-
 })
-
+// DB.db('admin').collection("bots").insert(_.cloneDeep(dno) , function(err, res){
+//     console.log('записали сделку в базу')
+// })
