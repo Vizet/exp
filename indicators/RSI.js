@@ -36,7 +36,7 @@ module.exports = function (series, period) {
 
 
         var RS = avgLoss.map( (el, i) => (el == 0) ? 0 : avgGain[i] / el)
-        var RSIresult = RS.map( el=> 100 - 100 / (1 + el) )
+        var RSIresult = RS.map( el => 100 - 100 / (1 + el) )
 
         return RSIresult
     }

@@ -43,39 +43,55 @@ function startBots(botsArray){
 
 }
 
+
 let bnbBot = new Bot({
     symbol: 'bnbusdt',
-    timeframe: '1m',
+    timeframe: '1h',
     buy: function (candles) {
         // colorBar
         let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
         let twoRedCandles = colorCandlesArr.every(el => el === 'red')
 
-        // RSI
-        let currentRSI = RSI(candles, 4).slice(-1)
-        let lastCandle = candles[candles.length]
-        let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
 
-        let RSIbuy = (currentRSI < 24) && (lastCandle > avgCandleSize / 5) && (lastCandle[1] > lastCandle[4])
-        return true //twoRedCandles || RSIbuy
+        // RSI
+        let prices = candles.map(el => parseFloat(el[4]))
+        let currentRSI = RSI(prices, 4).slice(-1)
+
+        let candleSizes = candles.map(el => Math.abs(el[4] - el[1]))
+        let avgCandleSize =  candleSizes.slice(-10).reduce( (sum, el) => sum + el) / 10
+        let lastCandleSize = candleSizes[candleSizes.length - 1]
+
+        let lastCandle = candles[candles.length - 1]
+        let lastCandleRed = lastCandle[1] > lastCandle[4]
+
+        let RSIbuy = (currentRSI < 24) && (lastCandleSize > avgCandleSize / 5) && lastCandleRed
+        return twoRedCandles || RSIbuy
     },
     sell: function (candles) {
-        // colorBar
-        let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-        let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
+
 
         // RSI
-        let currentRSI = RSI(candles, 4).slice(-1)
-        let lastCandle = candles[candles.length]
-        let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
+        let prices = candles.map(el => parseFloat(el[4]))
+        let currentRSI = RSI(prices, 4).slice(-1)
+
+        let candleSizes = candles.map(el => Math.abs(el[4] - el[1]))
+        let lastCandleSize = candleSizes[candleSizes.length - 1]
+        let avgCandleSize =  candleSizes.slice(-10).reduce( (sum, el) => sum + el) / 10
+
+        let lastCandle = candles[candles.length - 1]
+        let lastCandleGreen = lastCandle[4] > lastCandle[1]
+
+        // console.log('sell', currentRSI, lastCandle, avgCandleSize, lastCandle[4], lastCandle[1])
 
         // FIX THIS
-        let RSIsell = (currentRSI > 24) && (lastCandle > avgCandleSize / 2) && (lastCandle[4] > lastCandle[1])
+        let RSIsell = (currentRSI > 24) && (lastCandleSize > avgCandleSize / 2) && lastCandleGreen
 
-        return true //RSIsell
+        return RSIsell
     },
     startCandles: 500
 })
+
+bnbBot.runBacktest()
 
 
 
@@ -92,41 +108,41 @@ app.get('/', function (req, res) {
 
 db.connect(function () {
     app.listen('3000', function () {
-        startBots([
-            new Bot({
-                symbol: 'bnbusdt',
-                timeframe: '1m',
-                buy: function (candles) {
-                    // colorBar
-                    let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-                    let twoRedCandles = colorCandlesArr.every(el => el === 'red')
-
-                    // RSI
-                    let currentRSI = RSI(candles, 4).slice(-1)
-                    let lastCandle = candles[candles.length]
-                    let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
-
-                    let RSIbuy = (currentRSI < 24) && (lastCandle > avgCandleSize / 5) && (lastCandle[1] > lastCandle[4])
-                    return true //twoRedCandles || RSIbuy
-                },
-                sell: function (candles) {
-                    // colorBar
-                    let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-                    let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
-
-                    // RSI
-                    let currentRSI = RSI(candles, 4).slice(-1)
-                    let lastCandle = candles[candles.length]
-                    let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
-
-                    // FIX THIS
-                    let RSIsell = (currentRSI > 24) && (lastCandle > avgCandleSize / 2) && (lastCandle[4] > lastCandle[1])
-
-                    return true //RSIsell
-                },
-                startCandles: 500
-            })
-        ])
+        // startBots([
+        //     new Bot({
+        //         symbol: 'bnbusdt',
+        //         timeframe: '1m',
+        //         buy: function (candles) {
+        //             // colorBar
+        //             let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
+        //             let twoRedCandles = colorCandlesArr.every(el => el === 'red')
+        //
+        //             // RSI
+        //             let currentRSI = RSI(candles, 4).slice(-1)
+        //             let lastCandle = candles[candles.length]
+        //             let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
+        //
+        //             let RSIbuy = (currentRSI < 24) && (lastCandle > avgCandleSize / 5) && (lastCandle[1] > lastCandle[4])
+        //             return twoRedCandles || RSIbuy
+        //         },
+        //         sell: function (candles) {
+        //             // colorBar
+        //             let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
+        //             let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
+        //
+        //             // RSI
+        //             let currentRSI = RSI(candles, 4).slice(-1)
+        //             let lastCandle = candles[candles.length]
+        //             let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
+        //
+        //             // FIX THIS
+        //             let RSIsell = (currentRSI > 24) && (lastCandle > avgCandleSize / 2) && (lastCandle[4] > lastCandle[1])
+        //
+        //             return RSIsell
+        //         },
+        //         startCandles: 500
+        //     })
+        // ])
     })
 })
 // DB.db('admin').collection("bots").insert(_.cloneDeep(dno) , function(err, res){

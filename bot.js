@@ -5,6 +5,7 @@ var moment = require('moment')
 
 var RSI = require('./indicators/RSI.js')
 var db = require('./DB')
+var ObjectID = require('mongodb').ObjectID
 
 module.exports = class Bot{
 
@@ -14,41 +15,90 @@ module.exports = class Bot{
     */
 
 	constructor({symbol, timeframe, buy, sell, startCandles}){
-        db.connect(() => {
-            this.symbol = symbol
-            this.timeframe = timeframe
-            this.buy = buy
-            this.sell = sell
-            this.positionOpen = false
-            this.candles = []
+        // db.connect(() => {
+        this.symbol = symbol
+        this.timeframe = timeframe
+        this.buy = buy
+        this.sell = sell
+        this.positionOpen = false
+        this.candles = []
 
+        this.positionOpen = false
+        this.lastDeal = {}
+        this.mongoID = null
 
-            this.streamName = symbol.toLowerCase()+'@kline_'+timeframe // ltcusdt@kline_1h
-
-            this.botHistory = {
-                botName: this.streamName,
-                startTime: moment().format('HH:mm:ss DD.MM.YYYY'),
-                tradeHistory: []
-            }
-
-
-            axios.get('https://api.binance.com/api/v1/klines?symbol='+this.symbol.toUpperCase()+'&interval='+timeframe+'&limit='+startCandles)
-                .then(response => {
-                    console.log('данные загружены в бота', this.streamName)
-                    this.candles = response.data
-                    var close = this.candles.map(el => el[4])
-                    var rsiRes = RSI(close, 14)
-                    console.log(this.streamName, 'RSI', rsiRes.slice(-5))
-
-                })
-                .catch(e => console.log('Ошибка при загрузке стартовых данных', e))
-        })
+        this.streamName = symbol.toLowerCase()+'@kline_'+timeframe // ltcusdt@kline_1h
 	}
 
-	get endLastCandleTime(){
-	    return this.candles[this.candles.length][6]
+	init(){
+        this.initDbConnect()
+
+
+        axios.get('https://api.binance.com/api/v1/klines?symbol='+this.symbol.toUpperCase()+'&interval='+timeframe+'&limit='+startCandles)
+            .then(response => {
+                console.log('данные загружены в бота', this.streamName)
+                this.candles = response.data
+                var close = this.candles.map(el => el[4])
+                var rsiRes = RSI(close, 14)
+                console.log(this.streamName, 'RSI', rsiRes.slice(-5))
+
+            })
+            .catch(e => console.log('Ошибка при загрузке стартовых данных', e))
     }
 
+	initDbConnect(){
+	    let insertData= {
+            botName: this.streamName,
+            startTime: moment().format('HH:mm:ss DD.MM.YYYY'),
+            tradeHistory: []
+        }
+
+	    db.connect(() =>{
+	        console.log(this.streamName, 'Лог бота создан')
+            db.get().collection("bots").insert(insertData , (err, res) => {
+                if(err){
+                    console.log(this.streamName, 'ошибка создания лога')
+                }
+                else{
+                    console.log(this.streamName, 'лог успешно создан')
+                }
+
+                this.mongoID = insertData._id;
+
+            })
+        })
+    }
+
+    updateDbLog(){
+        db.get().collection("bots").updateOne({_id: ObjectID(this.mongoID)}, {$push: {tradeHistory: this.lastDeal}}, (err, res) => {
+            if(err){
+                console.log('ошибка обновленяи записи', err)
+            }else{
+                console.log('вроедк всек ок')
+            }
+
+            this.lastDeal = {}
+
+        })
+    }
+
+
+    objCandleToArray(objCandle) {
+        return [
+            objCandle.t,
+            objCandle.o,
+            objCandle.h,
+            objCandle.l,
+            objCandle.c,
+            objCandle.v,
+            objCandle.T,
+            objCandle.q,
+            objCandle.n,
+            objCandle.V,
+            objCandle.Q,
+
+        ]
+    }
 
 
     processNewCandle(newCandle){
@@ -76,23 +126,6 @@ module.exports = class Bot{
         }
     }
 
-    objCandleToArray(objCandle) {
-        return [
-            objCandle.t,
-            objCandle.o,
-            objCandle.h,
-            objCandle.l,
-            objCandle.c,
-            objCandle.v,
-            objCandle.T,
-            objCandle.q,
-            objCandle.n,
-            objCandle.V,
-            objCandle.Q,
-
-        ]
-    }
-
     // fake Deal
     makeDeal(action = 'none'){
         axios.get('https://api.binance.com/api/v1/depth?symbol='+this.symbol.toUpperCase()+'&limit=5')
@@ -104,33 +137,84 @@ module.exports = class Bot{
                 }
 
                 if(action === 'buy'){
-                    this.botHistory.tradeHistory.push({
-                        timeBuy: moment().format('HH:mm:ss DD.MM.YYYY'),
-                        butPrice: price.ask
-                    })
+                    this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
+                    this.lastDeal.butPrice = price.ask
+
                     console.log(this.streamName, 'покупка по цене', price.ask)
                 }
 
                 if(action === 'sell'){
-                    this.botHistory.tradeHistory[this.botHistory.tradeHistory.length - 1].timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
-                    this.botHistory.tradeHistory[this.botHistory.tradeHistory.length - 1].sellPrice = price.bid
+                    this.lastDeal.timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
+                    this.lastDeal.sellPrice = price.bid
 
-                    db.get().collection("bots").insert(this.botHistory , (err, res) => {
-                        if(err){
-                            console.log(this.streamName, 'ошибка при записи в базу')
-                        }
-                        else{
-                            console.log(this.streamName, 'сделка записана в базу')
-                        }
-
-                    })
+                    this.updateDbLog()
 
                     console.log(this.streamName, 'продажа по цене', price.bid)
                 }
 
                 // console.log('BEST', price)
             })
-            .catch(e => console.log('makeDeal что то не так', e))
+            .catch(e => {
+                console.log('makeDeal что то не так', e)
+                makeDeal(action)
+            })
+    }
+
+    runBacktest(){
+        axios.get('https://api.binance.com/api/v1/klines?symbol='+this.symbol.toUpperCase()+'&interval='+this.timeframe+'&limit=200')
+            .then(response => {
+
+                let allCandles = response.data
+                allCandles = allCandles.map(candle => candle.map(el => parseFloat(el)))
+
+                let currentCandles = []
+                var positionOpen = false
+
+                var needToBuy = false
+                var needToSell = false
+
+                let tradeLog = []
+
+                console.log('Данные для бэктеста получены')
+
+                allCandles.forEach( (thisCandle, i) => {
+                    currentCandles = allCandles.slice(0, i + 1)
+
+                    if(needToBuy){
+                        console.log(this.streamName, moment(thisCandle[0]).format('HH:mm:ss DD.MM.YYYY'), 'покупка по цене', thisCandle[1])
+                        needToBuy = false
+                        // tradeLog.push({buy: thisCandle[1]})
+                    }
+
+                    if(needToSell){
+                        console.log(this.streamName, moment(thisCandle[0]).format('HH:mm:ss DD.MM.YYYY'), 'продажа по цене', thisCandle[1])
+                        needToSell = false
+                        // tradeLog[tradeLog.length - 1].sell = thisCandle[1]
+                    }
+
+                    // console.log(positionOpen, this.buy(currentCandles), this.sell(currentCandles))
+
+                    if(i > 30){
+                        if(positionOpen == false){
+                            if(this.buy(currentCandles)){
+                                positionOpen = true
+                                needToBuy = true
+                            }
+                        }
+                        else{
+                            if(this.sell(currentCandles)){
+                                positionOpen = false
+                                needToSell = true
+                            }
+                        }
+                    }
+                })
+
+                // console.log('Всего сделок', tradeLog.length)
+                // console.log('Прибыльных', tradeLog.reduce( (sum, el) => sum + (el.sell > el.buy) ? 1 : 0) )
+
+            })
+            .catch(e => console.log('Ошибка при загрузке бэктеста', e))
 
     }
 
