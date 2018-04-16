@@ -1,4 +1,4 @@
 module.exports = {
     binanceAPIkey: 'test',
-    binanceSecretKey: 'testest'
+    binanceSecretKey: 'testest1555'
 }
