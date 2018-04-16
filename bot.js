@@ -81,7 +81,7 @@ module.exports = class Bot{
             if(err){
                 console.log('ошибка обновленяи записи', err)
             }else{
-                console.log('------------------------------------------')
+                console.log('-----------------------------------------')
             }
 
             this.lastDeal = {}
