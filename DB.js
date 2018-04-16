@@ -1,5 +1,6 @@
 var mongoClient = require('mongodb').MongoClient
 
+console.log('Моудль DB заупщен')
 let state = {
     db: null
 }

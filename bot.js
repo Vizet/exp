@@ -7,6 +7,11 @@ var RSI = require('./indicators/RSI.js')
 var db = require('./DB')
 var ObjectID = require('mongodb').ObjectID
 
+
+const APIkeys = require('./APIkeys')
+
+const binance = require('node-binance-api');
+
 module.exports = class Bot{
 
     /*      TODO
@@ -18,10 +23,12 @@ module.exports = class Bot{
         // db.connect(() => {
         this.symbol = symbol
         this.timeframe = timeframe
+        this.startCandles = startCandles
         this.buy = buy
         this.sell = sell
         this.positionOpen = false
         this.candles = []
+        this.quantity = 0.1
 
         this.positionOpen = false
         this.lastDeal = {}
@@ -34,7 +41,7 @@ module.exports = class Bot{
         this.initDbConnect()
 
 
-        axios.get('https://api.binance.com/api/v1/klines?symbol='+this.symbol.toUpperCase()+'&interval='+timeframe+'&limit='+startCandles)
+        axios.get('https://api.binance.com/api/v1/klines?symbol='+this.symbol.toUpperCase()+'&interval='+this.timeframe+'&limit='+this.startCandles)
             .then(response => {
                 console.log('данные загружены в бота', this.streamName)
                 this.candles = response.data
@@ -74,7 +81,7 @@ module.exports = class Bot{
             if(err){
                 console.log('ошибка обновленяи записи', err)
             }else{
-                console.log('вроедк всек ок')
+                console.log('------------------------------------------')
             }
 
             this.lastDeal = {}
@@ -126,38 +133,67 @@ module.exports = class Bot{
         }
     }
 
-    // fake Deal
     makeDeal(action = 'none'){
-        axios.get('https://api.binance.com/api/v1/depth?symbol='+this.symbol.toUpperCase()+'&limit=5')
-            .then(response => {
+        let realMode = false
 
-                var price = {
-                    bid: response.data.bids[0][0], // цена покупки(на бирже)
-                    ask: response.data.asks[0][0]  // цена продажи(на бирже)
-                }
+        if(realMode){
+            this.realDeal(action)
+        }else{
+            this.fakeDeal(action)
+        }
+    }
 
-                if(action === 'buy'){
-                    this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
-                    this.lastDeal.butPrice = price.ask
+    realDeal(action = 'none'){
+        if(action === 'buy'){
+            binance.marketBuy(this.symbol.toUpperCase(), this.quantity, (error, response) => {
 
-                    console.log(this.streamName, 'покупка по цене', price.ask)
-                }
+                binance.trades("BNBUSDT", (error, trades, symbol) => {
+                    this.lastDeal.buyPrice = trades.find(el => el.orderId == response.clientOrderId).price
+                    console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice);
+                })
 
-                if(action === 'sell'){
+                this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
+
+                console.log( 'покупка по цене', ticker.askPrice)
+            })
+        }
+
+        if(action === 'sell'){
+            binance.marketSell(this.symbol.toUpperCase(), this.quantity, (error, response) => {
+
+                binance.trades("BNBUSDT", (error, trades, symbol) => {
+                    this.lastDeal.buyPrice = trades.find(el => el.orderId == response.clientOrderId).price
                     this.lastDeal.timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
-                    this.lastDeal.sellPrice = price.bid
-
                     this.updateDbLog()
 
-                    console.log(this.streamName, 'продажа по цене', price.bid)
-                }
+                    console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice);
+                })
 
-                // console.log('BEST', price)
+                console.log( 'покупка по цене', ticker.askPrice)
             })
-            .catch(e => {
-                console.log('makeDeal что то не так', e)
-                makeDeal(action)
-            })
+        }
+    }
+
+    // emulate Deal (only gets price)
+    fakeDeal(action = 'none'){
+        binance.bookTickers(this.symbol.toUpperCase(), (error, ticker) => {
+            if(action === 'buy'){
+                this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
+                this.lastDeal.buyPrice = ticker.askPrice
+
+                console.log(this.streamName, this.lastDeal.timeBuy, 'покупка по цене', ticker.askPrice)
+            }
+
+            if(action === 'sell'){
+                this.lastDeal.timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
+                this.lastDeal.sellPrice = ticker.bidPrice
+
+                this.updateDbLog()
+
+                console.log(this.streamName, this.lastDeal.timeSell,'продажа по цене', ticker.bidPrice)
+            }
+
+        });
     }
 
     runBacktest(){
@@ -215,7 +251,6 @@ module.exports = class Bot{
 
             })
             .catch(e => console.log('Ошибка при загрузке бэктеста', e))
-
     }
 
 }

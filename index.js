@@ -1,18 +1,29 @@
 var express = require('express')
-var axios = require('axios')
-const WebSocket = require('ws')
-var io = require('socket.io').listen(80)
 var mongoClient = require('mongodb').MongoClient
+
+const WebSocket = require('ws')
+const binance = require('node-binance-api');
+
+binance.options({
+    APIKEY: APIkeys.binanceAPIkey,
+    APISECRET: APIkeys.binanceSecretKey,
+    // useServerTime: true,
+    test: true // If you want to use sandbox mode where orders are simulated
+});
 
 const Bot = require('./bot.js')
 const RSI = require('./indicators/RSI.js')
 const db = require('./DB')
+const APIkeys = require('./APIkeys')
 
 var app = express()
 
+console.log(APIkeys)
+
+// инициализация API
 
 
-// юзаю сокеты для конекта к стриму свечей
+
 
 
 var botsCollection = {};
@@ -20,6 +31,7 @@ var botsCollection = {};
 function startBots(botsArray){
     botsArray.forEach(currentBot=> {
         botsCollection[currentBot.streamName] = currentBot
+        currentBot.init()
     })
 
 
@@ -43,13 +55,12 @@ function startBots(botsArray){
 
 }
 
-
 let bnbBot = new Bot({
     symbol: 'bnbusdt',
-    timeframe: '1h',
+    timeframe: '1m',
     buy: function (candles) {
         // colorBar
-        let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
+        let colorCandlesArr = candles.slice(-2).map(el => el[4] > el[1] ? 'green' : 'red')
         let twoRedCandles = colorCandlesArr.every(el => el === 'red')
 
 
@@ -68,7 +79,9 @@ let bnbBot = new Bot({
         return twoRedCandles || RSIbuy
     },
     sell: function (candles) {
-
+        // colorBar
+        let colorCandlesArr = candles.slice(-2).map(el => el[4] > el[1] ? 'green' : 'red')
+        let twoGreenCandles = colorCandlesArr.every(el => el === 'green')
 
         // RSI
         let prices = candles.map(el => parseFloat(el[4]))
@@ -86,12 +99,12 @@ let bnbBot = new Bot({
         // FIX THIS
         let RSIsell = (currentRSI > 24) && (lastCandleSize > avgCandleSize / 2) && lastCandleGreen
 
-        return RSIsell
+        return RSIsell || twoGreenCandles
     },
     startCandles: 500
 })
 
-bnbBot.runBacktest()
+// bnbBot.runBacktest()
 
 
 
@@ -108,41 +121,7 @@ app.get('/', function (req, res) {
 
 db.connect(function () {
     app.listen('3000', function () {
-        // startBots([
-        //     new Bot({
-        //         symbol: 'bnbusdt',
-        //         timeframe: '1m',
-        //         buy: function (candles) {
-        //             // colorBar
-        //             let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-        //             let twoRedCandles = colorCandlesArr.every(el => el === 'red')
-        //
-        //             // RSI
-        //             let currentRSI = RSI(candles, 4).slice(-1)
-        //             let lastCandle = candles[candles.length]
-        //             let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
-        //
-        //             let RSIbuy = (currentRSI < 24) && (lastCandle > avgCandleSize / 5) && (lastCandle[1] > lastCandle[4])
-        //             return twoRedCandles || RSIbuy
-        //         },
-        //         sell: function (candles) {
-        //             // colorBar
-        //             let colorCandlesArr = candles.slice(candles.length - 2, candles.length).map(el => el[4] > el[1] ? 'green' : 'red')
-        //             let oneGreenCandle = colorCandlesArr[colorCandlesArr.length - 1] === 'green'
-        //
-        //             // RSI
-        //             let currentRSI = RSI(candles, 4).slice(-1)
-        //             let lastCandle = candles[candles.length]
-        //             let avgCandleSize =  candles.slice(-10).reduce( (sum, el) => sum + el) / 10
-        //
-        //             // FIX THIS
-        //             let RSIsell = (currentRSI > 24) && (lastCandle > avgCandleSize / 2) && (lastCandle[4] > lastCandle[1])
-        //
-        //             return RSIsell
-        //         },
-        //         startCandles: 500
-        //     })
-        // ])
+        startBots([bnbBot])
     })
 })
 // DB.db('admin').collection("bots").insert(_.cloneDeep(dno) , function(err, res){
