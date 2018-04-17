@@ -7,9 +7,6 @@ var RSI = require('./indicators/RSI.js')
 var db = require('./DB')
 var ObjectID = require('mongodb').ObjectID
 
-
-const APIkeys = require('./APIkeys')
-
 const binance = require('node-binance-api');
 
 module.exports = class Bot{
@@ -28,7 +25,7 @@ module.exports = class Bot{
         this.sell = sell
         this.positionOpen = false
         this.candles = []
-        this.quantity = 0.1
+        this.quantity = 1
 
         this.positionOpen = false
         this.lastDeal = {}
@@ -134,7 +131,7 @@ module.exports = class Bot{
     }
 
     makeDeal(action = 'none'){
-        let realMode = false
+        let realMode = true
 
         if(realMode){
             this.realDeal(action)
@@ -146,30 +143,24 @@ module.exports = class Bot{
     realDeal(action = 'none'){
         if(action === 'buy'){
             binance.marketBuy(this.symbol.toUpperCase(), this.quantity, (error, response) => {
-
-                binance.trades("BNBUSDT", (error, trades, symbol) => {
-                    this.lastDeal.buyPrice = trades.find(el => el.orderId == response.clientOrderId).price
-                    console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice);
+                binance.trades(this.symbol.toUpperCase(), (error, trades, symbol) => {
+                    this.lastDeal.buyPrice = trades.find(el => el.orderId == response.orderId).price
+                    this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
+                    console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice)
                 })
-
-                this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
-
-                console.log( 'покупка по цене', ticker.askPrice)
             })
         }
 
         if(action === 'sell'){
             binance.marketSell(this.symbol.toUpperCase(), this.quantity, (error, response) => {
 
-                binance.trades("BNBUSDT", (error, trades, symbol) => {
-                    this.lastDeal.buyPrice = trades.find(el => el.orderId == response.clientOrderId).price
+                binance.trades(this.symbol.toUpperCase(), (error, trades, symbol) => {
+                    this.lastDeal.buyPrice = trades.find(el => el.orderId === response.orderId).price
                     this.lastDeal.timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
                     this.updateDbLog()
 
                     console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice);
                 })
-
-                console.log( 'покупка по цене', ticker.askPrice)
             })
         }
     }
