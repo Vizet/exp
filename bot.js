@@ -16,7 +16,7 @@ module.exports = class Bot{
         * загрузка состояния бота их БД
     */
 
-	constructor({symbol, timeframe, buy, sell, startCandles}){
+	constructor({symbol, timeframe, buy, sell, startCandles, quantity, mode}){
         // db.connect(() => {
         this.symbol = symbol
         this.timeframe = timeframe
@@ -25,7 +25,8 @@ module.exports = class Bot{
         this.sell = sell
         this.positionOpen = false
         this.candles = []
-        this.quantity = 1
+        this.quantity = quantity
+        this.mode = mode
 
         this.positionOpen = false
         this.lastDeal = {}
@@ -43,7 +44,7 @@ module.exports = class Bot{
                 console.log('данные загружены в бота', this.streamName)
                 this.candles = response.data
                 var close = this.candles.map(el => el[4])
-                var rsiRes = RSI(close, 14)
+                var rsiRes = RSI(close, 4)
                 console.log(this.streamName, 'RSI', rsiRes.slice(-5))
 
             })
@@ -143,24 +144,45 @@ module.exports = class Bot{
     realDeal(action = 'none'){
         if(action === 'buy'){
             binance.marketBuy(this.symbol.toUpperCase(), this.quantity, (error, response) => {
-                binance.trades(this.symbol.toUpperCase(), (error, trades, symbol) => {
-                    this.lastDeal.buyPrice = trades.find(el => el.orderId == response.orderId).price
-                    this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
-                    console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice)
-                })
+                if(error){
+                    console.log('ошибка покупки', error)
+                }
+                else{
+                    binance.trades(this.symbol.toUpperCase(), (error, trades, symbol) => {
+                        if(error){
+                            console.log('ошибка получения информации о ордере на покупку', error)
+                        }
+                        else{
+                            this.lastDeal.buyPrice = trades.find(el => el.orderId == response.orderId).price
+                            this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
+                            console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice)
+                        }
+                    })
+                }
+
             })
         }
 
         if(action === 'sell'){
             binance.marketSell(this.symbol.toUpperCase(), this.quantity, (error, response) => {
+                if(error){
+                    console.log('ошибка продажи', error)
+                }
+                else{
+                    binance.trades(this.symbol.toUpperCase(), (error, trades, symbol) => {
+                        if(error){
+                            console.log('ошибка получения информации о ордере на продажу', error)
+                        }
+                        else {
+                            this.lastDeal.buyPrice = trades.find(el => el.orderId === response.orderId).price
+                            this.lastDeal.timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
+                            this.updateDbLog()
 
-                binance.trades(this.symbol.toUpperCase(), (error, trades, symbol) => {
-                    this.lastDeal.buyPrice = trades.find(el => el.orderId === response.orderId).price
-                    this.lastDeal.timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
-                    this.updateDbLog()
+                            console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice);
+                        }
+                    })
+                }
 
-                    console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice);
-                })
             })
         }
     }
