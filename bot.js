@@ -26,7 +26,7 @@ module.exports = class Bot{
         this.positionOpen = false
         this.candles = []
         this.quantity = quantity
-        this.mode = mode
+        this.realMode = mode == 'real'
 
         this.positionOpen = false
         this.lastDeal = {}
@@ -78,8 +78,6 @@ module.exports = class Bot{
         db.get().collection("bots").updateOne({_id: ObjectID(this.mongoID)}, {$push: {tradeHistory: this.lastDeal}}, (err, res) => {
             if(err){
                 console.log('ошибка обновленяи записи', err)
-            }else{
-                console.log('------------------------------------------')
             }
 
             this.lastDeal = {}
@@ -118,13 +116,13 @@ module.exports = class Bot{
             if(!this.positionOpen){
                 if(this.buy(this.candles)){
                     this.makeDeal('buy')
-                    this.positionOpen = true
+
                 }
             }
             else{
                 if(this.sell(this.candles)){
                     this.makeDeal('sell')
-                    this.positionOpen = false
+
                 }
             }
 
@@ -132,9 +130,7 @@ module.exports = class Bot{
     }
 
     makeDeal(action = 'none'){
-        let realMode = true
-
-        if(realMode){
+        if(this.realMode){
             this.realDeal(action)
         }else{
             this.fakeDeal(action)
@@ -155,7 +151,8 @@ module.exports = class Bot{
                         else{
                             this.lastDeal.buyPrice = trades.find(el => el.orderId == response.orderId).price
                             this.lastDeal.timeBuy = moment().format('HH:mm:ss DD.MM.YYYY')
-                            console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice)
+                            this.positionOpen = true
+                            console.log(this.streamName, 'покупка', this.lastDeal.timeBuy, this.lastDeal.buyPrice)
                         }
                     })
                 }
@@ -174,11 +171,12 @@ module.exports = class Bot{
                             console.log('ошибка получения информации о ордере на продажу', error)
                         }
                         else {
-                            this.lastDeal.buyPrice = trades.find(el => el.orderId === response.orderId).price
+                            this.lastDeal.sellPrice = trades.find(el => el.orderId === response.orderId).price
                             this.lastDeal.timeSell = moment().format('HH:mm:ss DD.MM.YYYY')
-                            this.updateDbLog()
+                            this.positionOpen = false
 
-                            console.log(this.streamName, this.lastDeal.timeBuy, this.lastDeal.buyPrice);
+                            this.updateDbLog()
+                            console.log(this.streamName, 'продажа', this.lastDeal.timeSell, this.lastDeal.sellPrice);
                         }
                     })
                 }

@@ -73,13 +73,9 @@ let bnbBot = new Bot({
         let lastCandleRed = lastCandle[1] > lastCandle[4]
 
         let RSIbuy = (currentRSI < 24) && (lastCandleSize > avgCandleSize / 5) && lastCandleRed
-        return true //twoRedCandles || RSIbuy
+        return twoRedCandles || RSIbuy
     },
     sell: function (candles) {
-        // colorBar
-        let colorCandlesArr = candles.slice(-2).map(el => el[4] > el[1] ? 'green' : 'red')
-        let twoGreenCandles = colorCandlesArr.every(el => el === 'green')
-
         // RSI
         let prices = candles.map(el => parseFloat(el[4]))
         let currentRSI = RSI(prices, 4).slice(-1)
@@ -91,12 +87,16 @@ let bnbBot = new Bot({
         let lastCandle = candles[candles.length - 1]
         let lastCandleGreen = lastCandle[4] > lastCandle[1]
 
+        // colorBar
+        let colorCandlesArr = candles.slice(-2).map(el => el[4] > el[1] ? 'green' : 'red')
+        let twoGreenCandles = colorCandlesArr.every(el => el === 'green') && lastCandleSize > avgCandleSize / 3
+
         // console.log('sell', currentRSI, lastCandle, avgCandleSize, lastCandle[4], lastCandle[1])
 
         // FIX THIS
         let RSIsell = (currentRSI > 24) && (lastCandleSize > avgCandleSize / 2) && lastCandleGreen
 
-        return true //RSIsell || twoGreenCandles
+        return RSIsell || twoGreenCandles
     },
     startCandles: 500
 })
@@ -141,6 +141,10 @@ let ltcBot = new Bot({
     startCandles: 500
 })
 
+// bnbBot.runBacktest()
+
+
+
 
 // cors on
 app.use(function (req, res, next) {
@@ -149,13 +153,16 @@ app.use(function (req, res, next) {
     next()
 })
 
-app.get('/', function (req, res) {
-    console.log('user request')
-})
+
 
 db.connect(function () {
     app.listen('3000', function () {
         startBots([bnbBot, ltcBot])
+    })
+
+    app.get('/', function (req, res) {
+        x = Object.values(botsCollection).map(el => el.candles)
+        res.send(x)
     })
 })
 // DB.db('admin').collection("bots").insert(_.cloneDeep(dno) , function(err, res){
